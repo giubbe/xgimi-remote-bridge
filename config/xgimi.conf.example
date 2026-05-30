@@ -1,0 +1,135 @@
+# XGIMI Remote Bridge - configuration example
+#
+# Copy this file to xgimi.conf and adapt it to your environment.
+#
+# DO NOT commit your real xgimi.conf.
+# DO NOT commit Google TV certificate/private-key files.
+#
+# Operational route:
+#   ON  = BLE manufacturer data 70 with known counters + optional WOL; optional CEC if network is not stable
+#   OFF = Google TV Remote POWER, therefore standby
+#   ADB = used when available; optional adb-auto-enable can restore TCP port 5555
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Network
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Projector IP address.
+XGIMI_IP="192.168.1.100"
+
+# Projector Wi-Fi MAC address, used only if WOL is enabled.
+XGIMI_WIFI_MAC="00:11:22:33:44:55"
+
+# Network interface used by the Raspberry / bridge host.
+NETWORK_IFACE="wlan0"
+
+# Broadcast address for your LAN, if required by your WOL tooling.
+BROADCAST_IP="192.168.1.255"
+
+# yes/no
+ENABLE_WOL_WAKE="yes"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bluetooth / BLE wake
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Projector Bluetooth MAC address.
+# Used by BLE wake logic; the wake payload may need the MAC bytes in reverse order.
+XGIMI_BT_MAC="11:22:33:44:55:66"
+
+# Original XGIMI remote Bluetooth MAC address, useful for documentation/debug only.
+XGIMI_RC_MAC="AA:BB:CC:DD:EE:FF"
+
+# Counters observed in the BLE wake payload.
+# Keep these unless you have captured different values for your unit.
+XGIMI_BLE_WAKE_COUNTERS="2e 30 31 32 33"
+
+# Seconds for each BLE wake advertising burst.
+XGIMI_BLE_WAKE_SECONDS="3"
+
+# Path to the BLE wake script.
+XGIMI_BLE_WAKE_SCRIPT="/opt/xgimi-remote/scripts/xgimi-ble-wake70.sh"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Google TV Remote
+# ─────────────────────────────────────────────────────────────────────────────
+
+GOOGLETV_HELPER="/opt/xgimi-remote/scripts/xgimi-googletv.sh"
+GOOGLETV_VENV="/opt/xgimi-remote/.venv-googletv"
+
+# These files are generated/used by Google TV Remote pairing.
+# They must stay local and must not be committed.
+GOOGLETV_CERT_FILE="/etc/xgimi-remote/googletv-cert.pem"
+GOOGLETV_KEY_FILE="/etc/xgimi-remote/googletv-key.pem"
+
+# Client name displayed to Google TV during pairing.
+GOOGLETV_CLIENT_NAME="xgimi-remote-bridge"
+
+GOOGLETV_CONNECT_TIMEOUT="12"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logical device name / runtime paths
+# ─────────────────────────────────────────────────────────────────────────────
+
+DEVICE_NAME="xgimi"
+
+STATE_DIR="/var/lib/xgimi-remote/state"
+LOG_FILE="/var/log/xgimi-remote/xgimi-remote.log"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Timeouts
+# ─────────────────────────────────────────────────────────────────────────────
+
+WAIT_NETWORK_TIMEOUT="60"
+WAIT_GOOGLETV_TIMEOUT="180"
+WAIT_ADB_TIMEOUT="180"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HDMI-CEC fallback
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# For ON, the bridge should not send "active source", to avoid changing input.
+# CEC should be used only as fallback when BLE do not produce stable network.
+
+ENABLE_CEC_WAKE="yes"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio option on power-on
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# yes = after ON, send VOLUME_UP, VOLUME_DOWN, MUTE via Google TV Remote.
+# This forces mute without changing the final volume level.
+
+ENABLE_FORCE_MUTE_ON="yes"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LMS / Jivelite display integration - opzionale
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Se abilitato, xgimi-on.sh invia brevi messaggi di stato al display
+# di un player Logitech Media Server, per esempio piCorePlayer / Jivelite.
+# Questa integrazione non blocca la sequenza di accensione XGIMI.
+# yes/no
+ENABLE_LMS_DISPLAY="no"
+LMS_HOST="192.168.1.10"
+LMS_PORT="9090"
+LMS_PLAYER_ID="00:11:22:33:44:55"
+LMS_DISPLAY_TITLE="XGIMI ON"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADB recovery / adb-auto-enable
+# ─────────────────────────────────────────────────────────────────────────────
+
+ADB_PORT="5555"
+ADB_AUTO_PORT="9093"
+
+# yes/no - reset local adb server before reconnecting.
+ADB_CONNECT_RESET="yes"

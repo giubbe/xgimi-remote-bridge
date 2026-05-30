@@ -1,0 +1,14 @@
+[Unit]
+Description=XGIMI USB HID Gadget keyboard + consumer control
+DefaultDependencies=no
+After=local-fs.target
+Before=multi-user.target
+ConditionPathExists=/sys/kernel/config
+
+[Service]
+Type=oneshot
+ExecStart=/opt/xgimi-remote/scripts/xgimi-usb-hid-setup-v2.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

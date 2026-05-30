@@ -1,0 +1,14 @@
+[Unit]
+Description=XGIMI FLIRC listener
+After=xgimi-usb-hid.service
+Requires=xgimi-usb-hid.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/xgimi-remote/scripts
+ExecStart=/usr/bin/python3 /opt/xgimi-remote/scripts/xgimi-flirc-listener.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

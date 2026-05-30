@@ -1,0 +1,24 @@
+# Local configuration / secrets
+xgimi.conf
+*.pem
+googletv-cert.pem
+googletv-key.pem
+
+# Runtime state and logs
+state/
+*.log
+xgimi-remote.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Backups
+*.bak
+*.bak.*
+
+# Local labs / captures
+lab/
+debug-wake/
+tvsettings.txt
+listadir.txt
