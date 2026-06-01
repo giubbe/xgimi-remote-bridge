@@ -1,6 +1,7 @@
 # XGIMI Remote Bridge
 
 Remote bridge for XGIMI / Google TV projectors using a Raspberry Pi, FLIRC, USB HID gadget mode, Google TV Remote v2, BLE wake, HDMI-CEC wake reinforcement and optional ADB recovery.
+A Raspberry Pi bridge for controlling XGIMI Google TV projectors with a universal IR remote, FLIRC, USB HID gadget mode, BLE wake, HDMI-CEC and Android TV Remote v2.
 
 The goal is to use a universal IR remote as a reliable projector remote, with low-latency USB HID for navigation and audio keys, and network/ADB fallbacks only where they are actually useful.
 
