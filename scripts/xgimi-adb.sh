@@ -25,6 +25,32 @@ case "${1:-}" in
     start_adb_recovery_bg
     ;;
 
+  force-5555|adb-force|recover-5555)
+    shift || true
+    port="${1:-}"
+
+    if [ -z "$port" ] && [ -f "$ADB_DYNAMIC_PORT_FILE" ]; then
+        port="$(cat "$ADB_DYNAMIC_PORT_FILE" 2>/dev/null || true)"
+    fi
+
+    if [ -z "$port" ]; then
+        echo "Uso: $0 force-5555 PORTA_DINAMICA" >&2
+        echo "Esempio: $0 force-5555 37831" >&2
+        xlog adb "ERRORE: force-5555 richiesto ma porta dinamica non nota"
+        exit 2
+    fi
+
+    xlog adb "force-5555 richiesto: porta dinamica=$port"
+
+    if adb_connect_dynamic_and_switch_5555 "$port"; then
+        xlog adb "force-5555 completato"
+        exit 0
+    fi
+
+    xlog adb "ERRORE: force-5555 fallito"
+    exit 1
+    ;;
+
   inputs|source|input|ingressi)
     xlog adb "apertura selettore ingressi via ADB"
     run_adb_marked am start -n com.google.android.tv.inputplayer/.switcher.SelectInputActivity >/dev/null
@@ -96,7 +122,7 @@ case "${1:-}" in
 
   *)
     cat >&2 <<USAGE
-Uso: $0 status|recover|inputs|hdmi1|hdmi2|mute|autofocus|focus-manual|settings|youtube|netflix|prime|xgimi-menu|shell COMANDO
+Uso: $0 status|recover|force-5555|adb-force|recover-5555|inputs|hdmi1|hdmi2|mute|autofocus|focus-manual|settings|youtube|netflix|prime|xgimi-menu|shell COMANDO
 USAGE
     exit 1
     ;;

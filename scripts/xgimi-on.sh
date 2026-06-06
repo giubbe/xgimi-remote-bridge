@@ -22,65 +22,7 @@ ENABLE_RETRY_WAKE_WHEN_GOOGLETV_OFF="${ENABLE_RETRY_WAKE_WHEN_GOOGLETV_OFF:-yes}
 GOOGLETV_OFF_RETRY_AFTER="${GOOGLETV_OFF_RETRY_AFTER:-3}"
 ENABLE_GOOGLETV_POWER_RETRY="${ENABLE_GOOGLETV_POWER_RETRY:-yes}"
 ENABLE_CEC_RETRY_WAKE="${ENABLE_CEC_RETRY_WAKE:-yes}"
-
-# Integrazione LMS/Jivelite: notifica stato accensione su piCorePlayer.
-# Non deve mai bloccare la sequenza XGIMI: se LMS non risponde, si limita a loggare il warning.
-ENABLE_LMS_DISPLAY="${ENABLE_LMS_DISPLAY:-no}"
-LMS_HOST="${LMS_HOST:-}"
-LMS_PORT="${LMS_PORT:-9090}"
-LMS_PLAYER_ID="${LMS_PLAYER_ID:-}"
-LMS_DISPLAY_TITLE="${LMS_DISPLAY_TITLE:-XGIMI ON}"
-
-
-
-urlencode_lms() {
-    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
-}
-
-lms_show_status() {
-    local line2="${1:-}"
-    local duration="${2:-8}"
-    local e_line1
-    local e_line2
-
-    if [ "$ENABLE_LMS_DISPLAY" != "yes" ]; then
-        return 0
-    fi
-
-    if [ -z "$LMS_HOST" ] || [ -z "$LMS_PLAYER_ID" ]; then
-        xlog lms "LMS display non configurato: LMS_HOST o LMS_PLAYER_ID vuoto"
-        return 0
-    fi
-
-    if ! command -v nc >/dev/null 2>&1; then
-        xlog lms "LMS display non disponibile: comando nc mancante"
-        return 0
-    fi
-
-    if ! command -v python3 >/dev/null 2>&1; then
-        xlog lms "LMS display non disponibile: python3 mancante"
-        return 0
-    fi
-
-    e_line1="$(urlencode_lms "$LMS_DISPLAY_TITLE")"
-    e_line2="$(urlencode_lms "$line2")"
-
-    echo "$LMS_PLAYER_ID show line1:$e_line1 line2:$e_line2 duration:$duration" \
-        | nc -w 2 "$LMS_HOST" "$LMS_PORT" >/dev/null 2>&1 || \
-            xlog lms "WARN: invio messaggio LMS fallito: $line2"
-}
-
-lms_show_phase() {
-    lms_show_status "$1" 300
-}
-
-lms_show_done() {
-    lms_show_status "Sequenza OK" 30
-}
-
-lms_show_error() {
-    lms_show_status "ERRORE accensione" 60
-}
+LMS_DISPLAY_TITLE="XGIMI ON"
 
 send_ble_wake_all_counters() {
     local counter

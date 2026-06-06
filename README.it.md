@@ -6,7 +6,7 @@ L’obiettivo è usare un telecomando universale IR come telecomando affidabile 
 
 ## Stato
 
-Versione: `1.0`
+Versione: `1.0.1`
 
 Funzioni validate:
 
@@ -205,10 +205,13 @@ python3 \
 python3-venv \
 curl \
 netcat-openbsd \
+avahi-utils \
 wakeonlan
 ```
 
 `netcat-openbsd` fornisce `nc`, usato dall’integrazione opzionale con il display Logitech Media Server.
+
+`avahi-utils` fornisce `avahi-browse`, usato dal recupero ADB per scoprire la porta dinamica `_adb-tls-connect._tcp` pubblicata dal debug wireless Android TV.
 
 In alternativa a `wakeonlan`:
 
@@ -542,8 +545,79 @@ adb devices
 Atteso:
 
 ```text
-PROJECTOR_IP:5555device
+PROJECTOR_IP:5555    device
 ```
+
+### Accoppiare il Raspberry Pi al debug wireless
+
+Il Raspberry Pi che esegue il bridge deve essere autorizzato per il debug wireless Android se deve collegarsi alla porta ADB dinamica del proiettore e riportarla su `5555`.
+
+Sul proiettore:
+
+```text
+Opzioni sviluppatore
+→ Debug wireless
+→ Associa dispositivo con codice di accoppiamento
+```
+
+Sul Raspberry Pi, scopri la porta di pairing:
+
+```bash
+avahi-browse -rt _adb-tls-pairing._tcp
+```
+
+Cerca l’IP del proiettore e la porta di pairing, poi esegui:
+
+```bash
+adb pair PROJECTOR_IP:PORTA_PAIRING
+```
+
+Inserisci il codice mostrato dal proiettore.
+
+Poi scopri la porta dinamica di connessione:
+
+```bash
+avahi-browse -rt _adb-tls-connect._tcp
+```
+
+Connettiti alla porta mostrata:
+
+```bash
+adb connect PROJECTOR_IP:PORTA_DINAMICA
+adb devices
+```
+
+Atteso:
+
+```text
+PROJECTOR_IP:PORTA_DINAMICA    device
+```
+
+Quando la porta dinamica è autorizzata, il bridge può riportare ADB su `5555`:
+
+```bash
+adb -s PROJECTOR_IP:PORTA_DINAMICA tcpip 5555
+sleep 2
+adb connect PROJECTOR_IP:5555
+adb devices
+```
+
+Dopo un pairing riuscito, pulisci eventuali blocchi temporanei del recovery:
+
+```bash
+rm -f /var/lib/xgimi-remote/state/adb-auth-required
+rm -f /var/lib/xgimi-remote/state/adb-bad-dynamic.port
+rm -f /var/lib/xgimi-remote/state/adb-dynamic.port
+rm -f /var/lib/xgimi-remote/state/adb-switch.last
+```
+
+Per installazioni locali di sviluppo, usa invece la directory `state/` dentro la cartella degli script.
+
+### Comportamento del recovery ADB
+
+`xgimi-adb-recover.sh` tratta ADB come opzionale e opportunistico. Prima controlla se `PROJECTOR_IP:5555` è già disponibile. Se non lo è, può usare `adb-auto-enable` e la scoperta Avahi/mDNS per trovare la porta dinamica corrente del debug wireless, poi provare a riportarla su `5555` dal Raspberry Pi.
+
+Se la porta dinamica è aperta a livello TCP ma `adb connect` fallisce, la causa più probabile è che il Raspberry Pi non sia ancora autorizzato al debug wireless. In quel caso lo script deve evitare tentativi inutili, segnare ADB come non disponibile e indicare nei log/display che ADB deve essere autorizzato.
 
 ## Configurazione opzionale VirtualHere per FLIRC remoto
 
@@ -908,9 +982,58 @@ cd /opt/xgimi-remote/scripts
 
 ### ADB non recupera
 
+ADB è opzionale. Se il recupero fallisce, controlla prima `adb-auto-enable` sul proiettore:
+
 ```bash
 curl -sS "http://$XGIMI_IP:9093/api/status"
+```
+
+Poi lancia il recovery manualmente:
+
+```bash
 ./xgimi-adb-recover.sh
+adb devices
+cat "$STATE_DIR/adb.state"
+```
+
+Se `adb-auto-enable` riporta un vecchio `lastPort`, o il log mostra fallimenti ripetuti su una porta dinamica, scopri la porta corrente direttamente con Avahi:
+
+```bash
+avahi-browse -rt _adb-tls-connect._tcp
+```
+
+Controlla se la porta pubblicata è raggiungibile:
+
+```bash
+nc -vz "$XGIMI_IP" PORTA_DINAMICA
+```
+
+Interpretazione:
+
+- `Connection refused` o timeout: la porta pubblicata è vecchia o non raggiungibile; attendi, riavvia il debug wireless, oppure riavvia `adb-auto-enable` / il proiettore.
+- La connessione TCP riesce ma `adb connect "$XGIMI_IP:PORTA_DINAMICA"` fallisce: probabilmente il Raspberry Pi non è associato/autorizzato per il debug wireless. Esegui il pairing da **Debug wireless → Associa dispositivo con codice di accoppiamento** sul proiettore e `adb pair` sul Raspberry Pi.
+- `adb connect "$XGIMI_IP:PORTA_DINAMICA"` funziona e appare come `device`: riporta ADB su `5555`:
+
+```bash
+adb -s "$XGIMI_IP:PORTA_DINAMICA" tcpip 5555
+sleep 2
+adb connect "$XGIMI_IP:5555"
+adb devices
+```
+
+Se lo script aveva rilevato una mancata autorizzazione, dopo il pairing cancella i blocchi temporanei:
+
+```bash
+rm -f "$STATE_DIR/adb-auth-required"
+rm -f "$STATE_DIR/adb-bad-dynamic.port"
+rm -f "$STATE_DIR/adb-dynamic.port"
+rm -f "$STATE_DIR/adb-switch.last"
+```
+
+Stato finale atteso:
+
+```text
+PROJECTOR_IP:5555    device
 ```
 
 ## Riferimenti esterni

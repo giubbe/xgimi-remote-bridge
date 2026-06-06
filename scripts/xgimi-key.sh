@@ -207,6 +207,11 @@ case "$cmd" in
     start_adb_recovery_bg
     ;;
 
+  adb-force|force-5555|recover-5555)
+    xlog key "richiesta adb-force: recupero manuale porta 5555"
+    "$ADB_HELPER" force-5555
+    ;;
+
   green)
     xlog key "tasto Green non assegnato"
     ;;
@@ -247,7 +252,7 @@ Uso:
   $0 autofocus|focus-manual
   $0 netflix|youtube|status
   $0 play-pause|stop|rewind|fast-forward
-  $0 adb-recover
+  $0 adb-recover|adb-force
 USAGE
     exit 1
     ;;

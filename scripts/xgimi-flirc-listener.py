@@ -106,6 +106,7 @@ KEY_MAP = {
     KEY_F15: "netflix",
     KEY_F16: "youtube",
     KEY_F17: "settings",
+    KEY_F18: "adb-force",
 }
 
 # Tasti su cui accettiamo autorepeat, ma con rate-limit e scarto eventi vecchi.

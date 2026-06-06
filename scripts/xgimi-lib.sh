@@ -27,6 +27,14 @@ ADB_PORT="${ADB_PORT:-5555}"
 ADB_RECOVERY_TIMEOUT="${ADB_RECOVERY_TIMEOUT:-45}"
 WAIT_NETWORK_TIMEOUT="${WAIT_NETWORK_TIMEOUT:-90}"
 
+ADB_AUTO_HTTP_PORT="${ADB_AUTO_HTTP_PORT:-9093}"
+ADB_SWITCH_COOLDOWN="${ADB_SWITCH_COOLDOWN:-60}"
+ADB_SWITCH_LAST_FILE="${ADB_SWITCH_LAST_FILE:-$STATE_DIR/adb-switch.last}"
+ADB_DYNAMIC_PORT_FILE="${ADB_DYNAMIC_PORT_FILE:-$STATE_DIR/adb-dynamic.port}"
+ADB_BAD_DYNAMIC_PORT_FILE="${ADB_BAD_DYNAMIC_PORT_FILE:-$STATE_DIR/adb-bad-dynamic.port}"
+ADB_AUTH_BLOCK_FILE="${ADB_AUTH_BLOCK_FILE:-$STATE_DIR/adb-auth-required}"
+ADB_AUTH_BLOCK_TTL="${ADB_AUTH_BLOCK_TTL:-3600}"
+
 USB_KEY="${USB_KEY:-$BASE_DIR/xgimi-usb-key.sh}"
 USB_CONSUMER="${USB_CONSUMER:-$BASE_DIR/xgimi-usb-consumer-key.sh}"
 GOOGLETV_HELPER="${GOOGLETV_HELPER:-$BASE_DIR/xgimi-googletv.sh}"
@@ -39,6 +47,74 @@ xlog() {
     local channel="${1:-main}"
     shift || true
     printf '%s [%s][%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$DEVICE_NAME" "$channel" "$*" >> "$LOG_FILE"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Integrazione LMS/Jivelite: notifica stato su piCorePlayer.
+# Non deve mai bloccare gli script XGIMI.
+# ─────────────────────────────────────────────────────────────────────────────
+
+ENABLE_LMS_DISPLAY="${ENABLE_LMS_DISPLAY:-no}"
+LMS_HOST="${LMS_HOST:-}"
+LMS_PORT="${LMS_PORT:-9090}"
+LMS_PLAYER_ID="${LMS_PLAYER_ID:-}"
+LMS_DISPLAY_TITLE="${LMS_DISPLAY_TITLE:-XGIMI}"
+
+urlencode_lms() {
+    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+lms_show_status() {
+    local line1="${1:-$LMS_DISPLAY_TITLE}"
+    local line2="${2:-}"
+    local duration="${3:-8}"
+    local e_line1
+    local e_line2
+
+    if [ "$ENABLE_LMS_DISPLAY" != "yes" ]; then
+        return 0
+    fi
+
+    if [ -z "$LMS_HOST" ] || [ -z "$LMS_PLAYER_ID" ]; then
+        xlog lms "LMS display non configurato: LMS_HOST o LMS_PLAYER_ID vuoto"
+        return 0
+    fi
+
+    if ! command -v nc >/dev/null 2>&1; then
+        xlog lms "LMS display non disponibile: comando nc mancante"
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        xlog lms "LMS display non disponibile: python3 mancante"
+        return 0
+    fi
+
+    e_line1="$(urlencode_lms "$line1")"
+    e_line2="$(urlencode_lms "$line2")"
+
+    echo "$LMS_PLAYER_ID show line1:$e_line1 line2:$e_line2 duration:$duration" \
+        | nc -w 2 "$LMS_HOST" "$LMS_PORT" >/dev/null 2>&1 || \
+            xlog lms "WARN: invio messaggio LMS fallito: $line1 / $line2"
+}
+
+lms_show_phase() {
+    lms_show_status "$LMS_DISPLAY_TITLE" "$1" 300
+}
+
+lms_show_attempt() {
+    local phase="${1:-Fase}"
+    local attempt="${2:-?}"
+    lms_show_status "$LMS_DISPLAY_TITLE" "$phase - tentativo $attempt" 300
+}
+
+
+lms_show_done() {
+    lms_show_status "$LMS_DISPLAY_TITLE" "${1:-Sequenza OK}" 15
+}
+
+lms_show_error() {
+    lms_show_status "$LMS_DISPLAY_TITLE" "${1:-ERRORE}" 60
 }
 
 state_set() {
@@ -96,6 +172,172 @@ adb_connect_fast() {
     adb connect "$serial" >/dev/null 2>&1 || return 1
     adb devices | grep -q "${serial}[[:space:]]*device" || return 1
     return 0
+}
+
+adb_auth_block_active() {
+    local now ts age
+
+    [ -f "$ADB_AUTH_BLOCK_FILE" ] || return 1
+
+    ts="$(cat "$ADB_AUTH_BLOCK_FILE" 2>/dev/null || echo 0)"
+    now="$(date +%s)"
+    age=$((now - ts))
+
+    if [ "$age" -lt "$ADB_AUTH_BLOCK_TTL" ]; then
+        xlog adb-recover "ADB auth block attivo: age=${age}s ttl=${ADB_AUTH_BLOCK_TTL}s"
+        return 0
+    fi
+
+    rm -f "$ADB_AUTH_BLOCK_FILE" 2>/dev/null || true
+    return 1
+}
+
+adb_auth_block_set() {
+    date +%s > "$ADB_AUTH_BLOCK_FILE"
+    xlog adb-recover "ADB auth richiesta: blocco recovery per ${ADB_AUTH_BLOCK_TTL}s"
+}
+
+tcp_port_open() {
+    local host="$1"
+    local port="$2"
+
+    timeout 3 bash -c "</dev/tcp/$host/$port" >/dev/null 2>&1
+}
+
+adb_discover_dynamic_port_avahi() {
+    local port
+
+    if ! command -v avahi-browse >/dev/null 2>&1; then
+        xlog adb-recover "avahi-browse non disponibile: impossibile scoprire porta ADB dinamica"
+        return 1
+    fi
+
+    port="$(
+        avahi-browse -rt _adb-tls-connect._tcp 2>/dev/null |
+        awk -v ip="$XGIMI_IP" '
+            $1 == "address" && $3 == "[" ip "]" { found_ip=1 }
+            found_ip && $1 == "port" {
+                gsub(/\[/, "", $3)
+                gsub(/\]/, "", $3)
+                print $3
+                exit
+            }
+        '
+    )"
+
+    if [ -z "$port" ]; then
+        xlog adb-recover "avahi-browse non ha trovato porta ADB dinamica per $XGIMI_IP"
+        return 1
+    fi
+
+    printf '%s\n' "$port"
+    return 0
+}
+
+adb_switch_cooldown_ok() {
+    local now last age
+
+    now="$(date +%s)"
+    last="$(cat "$ADB_SWITCH_LAST_FILE" 2>/dev/null || echo 0)"
+    age=$((now - last))
+
+    if [ "$age" -lt "$ADB_SWITCH_COOLDOWN" ]; then
+        xlog adb-recover "switch ADB in cooldown: age=${age}s cooldown=${ADB_SWITCH_COOLDOWN}s"
+        return 1
+    fi
+
+    return 0
+}
+
+adb_switch_mark_done() {
+    date +%s > "$ADB_SWITCH_LAST_FILE"
+}
+
+adb_connect_dynamic_and_switch_5555() {
+    local dyn_port="$1"
+    local dyn_serial="${XGIMI_IP}:${dyn_port}"
+    local final_serial
+
+    final_serial="$(adb_serial)"
+
+    if [ -z "$dyn_port" ]; then
+        xlog adb-recover "porta dinamica ADB vuota: switch manuale impossibile"
+        return 1
+    fi
+
+    if [ "$dyn_port" = "$ADB_PORT" ]; then
+        xlog adb-recover "porta dinamica già uguale ad ADB_PORT=$ADB_PORT"
+        adb_connect_fast && return 0
+    fi
+
+    if adb_auth_block_active; then
+        return 2
+    fi
+
+    if tcp_port_open "$XGIMI_IP" "$dyn_port"; then
+        xlog adb-recover "porta dinamica $dyn_serial aperta TCP"
+    else
+        xlog adb-recover "porta dinamica $dyn_serial chiusa TCP"
+        return 1
+    fi
+
+    xlog adb-recover "switch manuale ADB: provo connect a porta dinamica $dyn_serial"
+
+    local adb_out
+
+    adb_out="$(adb connect "$dyn_serial" 2>&1 || true)"
+    printf '%s\n' "$adb_out" >> "$LOG_FILE"
+
+    if echo "$adb_out" | grep -qiE "failed to authenticate|unauthorized|authentication|not allowed|permission"; then
+        xlog adb-recover "ADB connect fallito per autorizzazione/pairing su $dyn_serial"
+        adb_auth_block_set
+        return 2
+    fi
+
+    if ! echo "$adb_out" | grep -qiE "connected to|already connected"; then
+        xlog adb-recover "switch manuale ADB: connect a $dyn_serial fallito"
+        return 1
+    fi
+
+    if ! adb devices | grep -q "${dyn_serial}[[:space:]]*device"; then
+        xlog adb-recover "switch manuale ADB: $dyn_serial non risulta device"
+
+        adb devices >> "$LOG_FILE" 2>&1 || true
+
+        if tcp_port_open "$XGIMI_IP" "$dyn_port"; then
+            xlog adb-recover "porta TCP aperta ma ADB non autorizzato/non connesso: probabile pairing mancante"
+            adb_auth_block_set
+            return 2
+        fi
+
+        return 1
+    fi
+
+    xlog adb-recover "switch manuale ADB: invio tcpip $ADB_PORT tramite $dyn_serial"
+
+    adb -s "$dyn_serial" tcpip "$ADB_PORT" >> "$LOG_FILE" 2>&1 || {
+        xlog adb-recover "switch manuale ADB: tcpip $ADB_PORT fallito su $dyn_serial"
+        return 1
+    }
+
+    sleep 2
+
+    xlog adb-recover "switch manuale ADB: provo connect finale a $final_serial"
+
+    adb connect "$final_serial" >> "$LOG_FILE" 2>&1 || {
+        xlog adb-recover "switch manuale ADB: connect finale a $final_serial fallito"
+        return 1
+    }
+
+    if adb devices | grep -q "${final_serial}[[:space:]]*device"; then
+        xlog adb-recover "switch manuale ADB: $final_serial disponibile"
+        adb_state_available
+        return 0
+    fi
+
+    xlog adb-recover "switch manuale ADB: $final_serial non disponibile dopo switch"
+    adb devices >> "$LOG_FILE" 2>&1 || true
+    return 1
 }
 
 adb_shell_fast() {
