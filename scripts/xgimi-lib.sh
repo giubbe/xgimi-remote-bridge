@@ -388,6 +388,30 @@ force_mute_usb() {
     run_root_helper "$USB_CONSUMER" mute >/dev/null 2>&1 || return 1
 }
 
+force_mute_usb_quick_on() {
+    # Tentativo rapido durante l'accensione.
+    # Non deve bloccare la sequenza ON.
+    local key_timeout="${USB_MUTE_ON_KEY_TIMEOUT:-2}"
+
+    xlog audio "force-mute ON rapido: provo USB consumer"
+
+    [ -x "$USB_CONSUMER" ] || {
+        xlog audio "force-mute ON rapido USB saltato: helper non eseguibile: $USB_CONSUMER"
+        return 1
+    }
+
+    run_root_helper_timeout "$key_timeout" "$USB_CONSUMER" volume-up >/dev/null 2>&1 || return 1
+    sleep 0.2
+
+    run_root_helper_timeout "$key_timeout" "$USB_CONSUMER" volume-down >/dev/null 2>&1 || return 1
+    sleep 0.2
+
+    run_root_helper_timeout "$key_timeout" "$USB_CONSUMER" mute >/dev/null 2>&1 || return 1
+
+    xlog audio "force-mute ON rapido via USB OK"
+    return 0
+}
+
 force_unmute_usb() {
     [ -x "$USB_CONSUMER" ] || return 1
 
@@ -404,7 +428,7 @@ force_mute_best_effort() {
     fi
 
     xlog audio "force-mute USB fallito; provo Google TV"
-    if [ -x "$GOOGLETV_HELPER" ] && "$GOOGLETV_HELPER" force-mute >/dev/null 2>&1; then
+    if [ -x "$GOOGLETV_HELPER" ] && timeout "${GOOGLETV_FORCE_MUTE_TIMEOUT:-5}" "$GOOGLETV_HELPER" force-mute >/dev/null 2>&1; then
         xlog audio "force-mute via Google TV OK"
         return 0
     fi
@@ -436,7 +460,7 @@ force_mute_googletv_only() {
     # Motivo: durante il boot il ping/rete non garantisce che Android accetti HID.
     xlog audio "force-mute ON: provo solo Google TV"
 
-    if [ -x "$GOOGLETV_HELPER" ] && "$GOOGLETV_HELPER" force-mute >/dev/null 2>&1; then
+    if [ -x "$GOOGLETV_HELPER" ] && timeout "${GOOGLETV_FORCE_MUTE_TIMEOUT:-5}" "$GOOGLETV_HELPER" force-mute >/dev/null 2>&1; then
         xlog audio "force-mute ON via Google TV OK"
         return 0
     fi
@@ -479,6 +503,17 @@ run_root_helper() {
         "$@"
     else
         sudo -n "$@"
+    fi
+}
+
+run_root_helper_timeout() {
+    local seconds="${1:-2}"
+    shift || return 1
+
+    if [ "$(id -u)" -eq 0 ]; then
+        timeout "$seconds" "$@"
+    else
+        timeout "$seconds" sudo -n "$@"
     fi
 }
 
