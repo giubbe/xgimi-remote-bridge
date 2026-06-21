@@ -6,7 +6,7 @@ The goal is to use a universal IR remote as a reliable projector remote, with lo
 
 ## Status
 
-Version: `1.0.1`
+Version: `1.0.2`
 
 Validated functions:
 
@@ -19,6 +19,10 @@ Validated functions:
 - optional ADB recovery through adb-auto-enable;
 - optional Logitech Media Server / Jivelite display feedback during power-on;
 - special keys for input selection, HDMI selection, autofocus and focus menu.
+- early USB Consumer mute during power-on;
+- Google TV force-mute after confirmed `is_on=True`;
+- timeout-protected Google TV status and force-mute calls;
+- ADB recovery moved after startup mute so it does not delay Google TV Remote handling;
 
 ## Language note
 
@@ -49,10 +53,12 @@ Power-on uses a separate route:
 xgimi-on.sh
    ├── BLE manufacturer-data wake
    ├── immediate HDMI-CEC wake reinforcement
+   ├── early USB Consumer mute, best-effort
    ├── Wake-on-LAN fallback if network does not become stable
    ├── optional Logitech Media Server / Jivelite status messages
-   ├── background ADB recovery
-   └── optional Google TV force-mute after confirmed "is_on=True"
+   ├── Google TV status wait with per-call timeout
+   ├── final Google TV force-mute after confirmed "is_on=True"
+   └── background ADB recovery after startup mute
 ```
 
 ## BLE wake payload discovery and capture
@@ -115,6 +121,15 @@ ENABLE_WOL_WAKE="yes"
 ```
 
 For reliable operation, do not disable CEC unless you have verified that your projector wakes consistently without it.
+
+```markdown
+## Startup mute and ADB recovery behavior
+
+During power-on, the bridge prioritizes the visible user experience before ADB maintenance.
+
+The sequence first sends BLE wake and HDMI-CEC wake reinforcement, then tries a fast USB Consumer mute as soon as possible. After network and Google TV Remote become available, it applies a final Google TV force-mute.
+
+ADB recovery is intentionally started only after the startup mute path has completed. This prevents ADB recovery, dynamic-port discovery or `adb-auto-enable` handling from delaying Google TV Remote startup detection or mute handling.
 
 ## Repository layout
 

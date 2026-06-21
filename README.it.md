@@ -6,7 +6,7 @@ L’obiettivo è usare un telecomando universale IR come telecomando affidabile 
 
 ## Stato
 
-Versione: `1.0.1`
+Versione: `1.0.2`
 
 Funzioni validate:
 
@@ -19,6 +19,10 @@ Funzioni validate:
 - recupero ADB opzionale tramite adb-auto-enable;
 - feedback opzionale su display Logitech Media Server / Jivelite durante l’accensione;
 - tasti speciali per selezione ingressi, HDMI, autofocus e menu focus.
+- mute USB Consumer rapido durante l’accensione;
+- force-mute Google TV dopo conferma `is_on=True`;
+- timeout sui controlli Google TV status e force-mute;
+- recovery ADB spostato dopo il mute di accensione, così non ritarda la gestione Google TV Remote;
 
 ## Nota lingua
 
@@ -49,11 +53,23 @@ Accensione:
 xgimi-on.sh
  ├── BLE manufacturer-data wake
  ├── rinforzo immediato HDMI-CEC
+ ├── mute USB Consumer rapido, best-effort
  ├── Wake-on-LAN come fallback se la rete non diventa stabile
  ├── messaggi opzionali su Logitech Media Server / Jivelite
- ├── recupero ADB in background
- └── force-mute Google TV opzionale dopo conferma is_on=True
+ ├── attesa Google TV con timeout per singolo controllo
+ ├── force-mute Google TV finale dopo conferma is_on=True
+ └── recupero ADB in background dopo il mute di accensione
 ```
+
+
+```markdown
+## Comportamento mute di accensione e recovery ADB
+
+Durante l’accensione, il bridge dà priorità al comportamento percepito dall’utente prima della manutenzione ADB.
+
+La sequenza invia prima il wake BLE e il rinforzo HDMI-CEC, poi tenta un mute rapido tramite USB Consumer appena possibile. Quando rete e Google TV Remote risultano disponibili, applica un force-mute finale tramite Google TV.
+
+Il recovery ADB viene avviato intenzionalmente solo dopo il percorso di mute di accensione. Questo evita che recovery ADB, scoperta della porta dinamica o gestione `adb-auto-enable` possano ritardare il rilevamento Google TV Remote o il mute.
 
 ## Scoperta e cattura del payload BLE wake
 
