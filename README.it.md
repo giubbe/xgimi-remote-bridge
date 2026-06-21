@@ -62,7 +62,6 @@ xgimi-on.sh
 ```
 
 
-```markdown
 ## Comportamento mute di accensione e recovery ADB
 
 Durante l’accensione, il bridge dà priorità al comportamento percepito dall’utente prima della manutenzione ADB.
