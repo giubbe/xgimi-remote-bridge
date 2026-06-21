@@ -122,7 +122,6 @@ ENABLE_WOL_WAKE="yes"
 
 For reliable operation, do not disable CEC unless you have verified that your projector wakes consistently without it.
 
-```markdown
 ## Startup mute and ADB recovery behavior
 
 During power-on, the bridge prioritizes the visible user experience before ADB maintenance.
