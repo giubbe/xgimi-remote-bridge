@@ -15,6 +15,9 @@ XGIMI_WIFI_MAC="${XGIMI_WIFI_MAC:-}"
 ENABLE_CEC_WAKE="${ENABLE_CEC_WAKE:-yes}"
 ENABLE_FORCE_MUTE_ON="${ENABLE_FORCE_MUTE_ON:-yes}"
 
+ENABLE_USB_MUTE_ON="${ENABLE_USB_MUTE_ON:-yes}"
+GOOGLETV_STATUS_TIMEOUT="${GOOGLETV_STATUS_TIMEOUT:-5}"
+
 WAIT_NETWORK_TIMEOUT="${WAIT_NETWORK_TIMEOUT:-60}"
 WAIT_NETWORK_TIMEOUT_BEFORE_WOL="${WAIT_NETWORK_TIMEOUT_BEFORE_WOL:-${WAIT_NETWORK_TIMEOUT_BEFORE_CEC:-20}}"
 WAIT_GOOGLETV_TIMEOUT="${WAIT_GOOGLETV_TIMEOUT:-180}"
@@ -154,7 +157,7 @@ retry_wake_when_googletv_responds_but_off() {
 
     if [ "$ENABLE_GOOGLETV_POWER_RETRY" = "yes" ]; then
         xlog on "Retry wake: invio Google TV KEY POWER perché is_on=False"
-        "$GOOGLETV_HELPER" key POWER >> "$LOG_FILE" 2>&1 || \
+        timeout "$GOOGLETV_STATUS_TIMEOUT" "$GOOGLETV_HELPER" key POWER >> "$LOG_FILE" 2>&1 || \
             xlog on "WARN: retry Google TV KEY POWER fallito"
     else
         xlog on "Retry wake: Google TV KEY POWER disabilitato"
@@ -177,7 +180,7 @@ wait_googletv_status_stable() {
     start="$(date +%s)"
 
     while true; do
-        if "$GOOGLETV_HELPER" status > "$tmp_status" 2>&1; then
+        if timeout "$GOOGLETV_STATUS_TIMEOUT" "$GOOGLETV_HELPER" status > "$tmp_status" 2>&1; then
             cat "$tmp_status" >> "$LOG_FILE"
 
             if grep -q "is_on=True" "$tmp_status"; then
@@ -245,6 +248,14 @@ main() {
     lms_show_phase "Invio CEC wake"
     send_cec_wake_no_input_change || xlog on "WARN: CEC wake non riuscito"
 
+    # 2b. Mute USB anticipato: best-effort, non sostituisce Google TV mute
+    if [ "$ENABLE_USB_MUTE_ON" = "yes" ]; then
+        lms_show_phase "Mute USB rapido"
+        force_mute_usb_quick_on || xlog on "Mute USB rapido non riuscito o ignorato"
+    else
+        xlog on "Mute USB rapido disabilitato"
+    fi
+
     # 3. Dopo BLE/CEC, controllo rete stabile; se non arriva, provo WOL come fallback
     lms_show_phase "Attesa rete"
     xlog on "Attendo 10s prima della verifica rete dopo BLE/CEC"
@@ -264,12 +275,9 @@ main() {
             xlog on "WARN: rete ancora non stabile dopo WOL; proseguo comunque con Google TV"
     fi
 
-    # 4. Recovery ADB in background: non blocca l'accensione
-    lms_show_phase "Recupero ADB"
-    start_adb_recovery_bg >/dev/null 2>&1 || true
-
-    # 5. Attesa Google TV stabile e force mute
+    # 4. Attesa Google TV stabile e force mute
     lms_show_phase "Attesa Google TV"
+
     if wait_googletv_status_stable 2 "$WAIT_GOOGLETV_TIMEOUT"; then
         if [ "$ENABLE_FORCE_MUTE_ON" = "yes" ]; then
             lms_show_phase "Forzo mute"
@@ -278,10 +286,19 @@ main() {
             xlog on "Force mute su ON disabilitato"
         fi
 
+        # 5. Recovery ADB solo dopo il mute
+        lms_show_phase "Recupero ADB"
+        start_adb_recovery_bg >/dev/null 2>&1 || true
+
         lms_show_done
         xlog on "sequenza accensione completata; recovery ADB in background"
     else
         xlog on "WARN: Google TV non stabile/acceso; force-mute ON saltato"
+
+        # Recovery ADB anche in caso di warning, ma solo dopo aver rinunciato al mute
+        lms_show_phase "Recupero ADB"
+        start_adb_recovery_bg >/dev/null 2>&1 || true
+
         lms_show_error
         xlog on "sequenza accensione completata con warning; recovery ADB in background"
     fi
